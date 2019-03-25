@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+
+import re
+import keyring
+import getpass
+import sys
+from splinter import Browser
+
+url = 'https://sei.prf.gov.br'
+template = url + "/sei/controlador.php?acao=procedimento_trabalhar&id_procedimento=%s"
+
+def setup_pass(service):
+    username = keyring.get_password(service, "username@" + service) 
+    if not username:
+        username = getpass.getpass("Username para %s:" % service)
+        keyring.set_password(service, "username@" + service, username)
+
+    password = keyring.get_password(service, username)
+    if not password:
+        password = getpass.getpass("Password para %s:" % username)
+        keyring.set_password(service, username, password)
+    
+    return {
+            'username': username,
+            'password': password
+            }
+
+
+def login(browser, secret_store):
+    browser.visit(url)
+    browser.fill('txtUsuario', secret_store['username'])
+    browser.fill('pwdSenha', secret_store['password'])
+
+    # Find "Acessar" button
+    button = browser.find_by_name('sbmLogin')
+
+    # Interact with elements
+    button.click()
+
+def get_link(browser, processo):
+    # Search for processo
+    browser.fill('txtPesquisaRapida', processo + "\n")
+
+    with browser.get_iframe('ifrArvore') as frame:
+        # Find right element
+        anchor = frame.find_by_id('anchorBC').first
+        url = anchor['href']
+
+        procedimento = re.search('id_procedimento=(\d+)', url).group(1)
+
+        print(processo + ": " + template % procedimento)
+
+
+with Browser('chrome', headless=True) as browser:
+    processos = sys.argv[1:]
+    secret_store = setup_pass(url)
+    login(browser, secret_store)
+
+    for processo in processos:
+        get_link(browser, processo)
